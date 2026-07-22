@@ -1,5 +1,5 @@
 //import components
-
+import Recorder from './components/recorder';
 
 //usestate
 import { useState } from 'react';
@@ -12,8 +12,9 @@ function App() {
     {/*main div --------------------------------------------------------------------*/}
     <div className='flex flex-col h-screen w-screen'>
       {/*recording div ------------------------------------------------------------------*/}
-      <div className='bg-blue-100 h-[5%] m-4 flex justify-start items-center'>
+      <div className='bg-blue-100 h-[8%] p-2 m-4 flex justify-start items-center'>
         {/*recording button*/}
+        <Recorder />
       </div>
       
       {/*big div ------------------------------------------------------------------------*/}
