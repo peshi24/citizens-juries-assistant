@@ -4,10 +4,14 @@ import wave
 from datetime import datetime
 
 import pyaudio
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 import os
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+RECORDINGS_DIR = os.path.join(BASE_DIR, "recordings")
 
 app = FastAPI()
 
@@ -37,6 +41,8 @@ class AudioRecorder:
 
         self.frames = []
         self.filename = None
+        self.file_path = None
+        self.wave_writer = None
 
     def is_recording(self):
         return self.recording_event.is_set()
@@ -52,10 +58,11 @@ class AudioRecorder:
 
             self.frames = []
 
-            self.filename = os.path.join(
-                "recordings",
-                f"recording_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav"
-            )
+            self.filename = f"recording_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav"
+            self.file_path = os.path.join(RECORDINGS_DIR, self.filename)
+            self.wave_writer = None
+
+            os.makedirs(RECORDINGS_DIR, exist_ok=True)
 
             self.recording_event.set()
             self.pause_event.clear()
@@ -117,23 +124,36 @@ class AudioRecorder:
                 frames_per_buffer=CHUNK,
             )
 
-            print("Recording started.")
+            sample_width = p.get_sample_size(FORMAT)
 
-            while self.recording_event.is_set():
+            # Keep the WAV file open so pause/resume writes to the same file.
+            with wave.open(self.file_path, "wb") as wf:
+                wf.setnchannels(CHANNELS)
+                wf.setsampwidth(sample_width)
+                wf.setframerate(RATE)
 
-                if self.pause_event.is_set():
-                    time.sleep(0.1)
-                    continue
+                self.wave_writer = wf
 
-                try:
-                    data = stream.read(
-                        CHUNK,
-                        exception_on_overflow=False,
-                    )
-                    self.frames.append(data)
+                print("Recording started.")
 
-                except Exception as e:
-                    print(f"Audio read error: {e}")
+                while self.recording_event.is_set():
+
+                    if self.pause_event.is_set():
+                        time.sleep(0.1)
+                        continue
+
+                    try:
+                        data = stream.read(
+                            CHUNK,
+                            exception_on_overflow=False,
+                        )
+                        self.frames.append(data)
+                        wf.writeframes(data)
+
+                    except Exception as e:
+                        print(f"Audio read error: {e}")
+
+            self.wave_writer = None
 
         finally:
 
@@ -141,16 +161,7 @@ class AudioRecorder:
                 stream.stop_stream()
                 stream.close()
 
-            sample_width = p.get_sample_size(FORMAT)
             p.terminate()
-
-            if self.frames:
-
-                with wave.open(self.filename, "wb") as wf:
-                    wf.setnchannels(CHANNELS)
-                    wf.setsampwidth(sample_width)
-                    wf.setframerate(RATE)
-                    wf.writeframes(b"".join(self.frames))
 
             print("Recording saved.")
 
@@ -184,13 +195,15 @@ def pause_recording():
 
     if recorder.is_paused():
         return {
-            "status": "Already paused"
+            "status": "Already paused",
+            "filename": recorder.filename,
         }
 
     recorder.pause()
 
     return {
-        "status": "Recording paused"
+        "status": "Recording paused",
+        "filename": recorder.filename,
     }
 
 
@@ -204,13 +217,15 @@ def resume_recording():
 
     if not recorder.is_paused():
         return {
-            "status": "Already recording"
+            "status": "Already recording",
+            "filename": recorder.filename,
         }
 
     recorder.resume()
 
     return {
-        "status": "Recording resumed"
+        "status": "Recording resumed",
+        "filename": recorder.filename,
     }
 
 
@@ -228,6 +243,16 @@ def stop_recording():
         "status": "Recording stopped",
         "saved_to": filename,
     }
+
+
+@app.get("/recordings/{filename}")
+def get_recording(filename: str):
+    file_path = os.path.join(RECORDINGS_DIR, filename)
+
+    if not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail="Recording not found")
+
+    return FileResponse(file_path, media_type="audio/wav")
 
 
 @app.get("/status")

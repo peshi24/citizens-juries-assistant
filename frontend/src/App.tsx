@@ -2,11 +2,10 @@
 import Recorder from './components/recorder';
 
 //usestate
-import { useState } from 'react';
+
 
 //app main UI
-function App() { 
-
+function App() {
   return (
   <div className='flex'>
     {/*main div --------------------------------------------------------------------*/}
@@ -46,8 +45,8 @@ function App() {
 
         {/*transcription div ------------------------------------------------------------*/}
         <div className='flex flex-col bg-blue-100 m-4 mt-0 w-[45%] items-center'>
-          <div className='flex bg-white flex-1 mb-3 mt-2 ml-2 mr-2 w-[94%] p-4'>
-            <p>transcription</p>
+          <div className='flex bg-white flex-1 mb-3 mt-2 ml-2 mr-2 w-[94%] p-4 overflow-y-auto'>
+            <p className='whitespace-pre-wrap'>transcript</p>
           </div>
       
           {/*fact checker ------------------------------------------------------------*/}

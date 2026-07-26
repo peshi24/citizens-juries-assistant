@@ -1,10 +1,35 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 function Recorder() {
   const [status, setStatus] = useState<"idle" | "recording" | "paused">("idle");
   const [audioURL, setAudioURL] = useState<string | null>(null);
+  const [filename, setFilename] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const refreshTimerRef = useRef<number | null>(null);
 
   const API = "http://127.0.0.1:8000";
+
+  const clearRefreshTimer = () => {
+    if (refreshTimerRef.current !== null) {
+      window.clearInterval(refreshTimerRef.current);
+      refreshTimerRef.current = null;
+    }
+  };
+
+  const updateAudioSource = (nextFilename: string | null) => {
+    if (!nextFilename) {
+      setAudioURL(null);
+      return;
+    }
+
+    const nextUrl = `${API}/recordings/${nextFilename}?t=${Date.now()}`;
+    setAudioURL(nextUrl);
+
+    if (audioRef.current) {
+      audioRef.current.src = nextUrl;
+      audioRef.current.load();
+    }
+  };
 
   const startRecording = async () => {
     try {
@@ -16,7 +41,8 @@ function Recorder() {
 
       console.log(data);
 
-      setAudioURL(null);
+      setFilename(data.filename ?? null);
+      updateAudioSource(data.filename ?? null);
       setStatus("recording");
     } catch (err) {
       console.error(err);
@@ -32,6 +58,11 @@ function Recorder() {
       const data = await response.json();
 
       console.log(data);
+
+      if (data.filename) {
+        setFilename(data.filename);
+        updateAudioSource(data.filename);
+      }
 
       setStatus("paused");
     } catch (err) {
@@ -49,6 +80,8 @@ function Recorder() {
 
       console.log(data);
 
+      setFilename(null);
+
       setStatus("recording");
     } catch (err) {
       console.error(err);
@@ -65,13 +98,40 @@ function Recorder() {
 
       console.log(data);
 
-      setAudioURL(`${API}/recordings/${data.saved_to}`)
-      
+      if (data.saved_to) {
+        const savedFilename = data.saved_to.split("/").pop();
+        setFilename(savedFilename ?? null);
+        updateAudioSource(savedFilename ?? null);
+      }
+
+      clearRefreshTimer();
       setStatus("idle");
     } catch (err) {
       console.error(err);
     }
   };
+
+  useEffect(() => {
+    if (status !== "recording" || !filename) {
+      clearRefreshTimer();
+      return;
+    }
+
+    updateAudioSource(filename);
+    refreshTimerRef.current = window.setInterval(() => {
+      updateAudioSource(filename);
+    }, 1000);
+
+    return () => {
+      clearRefreshTimer();
+    };
+  }, [filename, status]);
+
+  useEffect(() => {
+    return () => {
+      clearRefreshTimer();
+    };
+  }, []);
 
   console.log("Audio URL being displayed:", audioURL);
 
@@ -126,9 +186,9 @@ function Recorder() {
 
       </div>
 
-      {audioURL && (
+      {audioURL && status !== "recording" && (
         <div className="flex flex-col items-center gap-1">
-          <audio controls src={audioURL} />
+          <audio ref={audioRef} controls src={audioURL} />
         </div>
       )}
     </div>
